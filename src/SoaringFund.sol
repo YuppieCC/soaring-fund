@@ -9,6 +9,7 @@ contract SoaringFund is Ownable {
 
     event Staked(address indexed user_, uint256 actualStakedAmount_, uint256 totalStakedNew);
     event Claimed(address indexed user_, uint256 actualClaimedAmount_, uint256 totalClaimedNew);
+    event SetSmartChefArray(address[] smartChefArray_);
 
     address public stakeToken;
     uint256 public totalStaked;
@@ -20,6 +21,9 @@ contract SoaringFund is Ownable {
     mapping(address => uint256) public staked;
     mapping(address => uint256) public claimed;
     mapping(address => uint256) public userOwnRewardPerToken;
+
+    uint256[] public weightsArray;
+    address[] public smartChefArray;
 
     constructor(address stakeToken_) Ownable(msg.sender) { 
         stakeToken = stakeToken_;
@@ -56,5 +60,85 @@ contract SoaringFund is Ownable {
         totalClaimed += totalClaimed;
         emit Claimed(msg.sender, actualClaimedAmount, totalClaimed);
     }
-    
+
+    function setSmartChefArray(
+        address[] memory smartChefArray_,
+        uint256[] memory weightsArray_
+    ) external onlyOwner {
+        require(weightsArray_.length == smartChefArray_.length, "Invalid array length");
+
+        uint256 totalWeights;
+        for (uint256 i = 0; i < weightsArray_.length; ++i) {
+            require(smartChefArray_[i] != address(0), "Invalid address");
+            totalWeights += weightsArray_[i];
+        }
+        require(totalWeights == 1e9, "Invalid weights");
+
+        smartChefArray = smartChefArray_;
+        weightsArray = weightsArray_;
+        emit SetSmartChefArray(smartChefArray_, weightsArray_);
+    }
+
+    function _getRewardPerToken() internal view returns (uint256) {
+        // (totalFunds - totalInvest) / totalStaked + rewardPerTokenStored
+        if (totalStaked == 0 ) {
+            return 0;
+        }
+        return (totalFunds.sub(totalInvest)).mul(1e18).div(totalStaked).add(rewardPerTokenStored);
+    }
+
+    function _redeemFunds() internal {
+        if (totalInvest == 0 ) {
+            // last invest funds is zero, no funds withdraw from smartChef.
+            totalFunds = 0;
+        } else {
+            require(smartChefArray.length > 0, "No smartChefArray");
+            uint256 prevBalance = cakeToken.balanceOf(address(this));
+            
+            for (uint256 i = 0; i < smartChefArray.length; ++i) {
+                uint256 weight = weightsArray[i];
+                smartChef = ISmartChefInitializable(smartChefArray[i]);
+                address rewardToken = smartChef.rewardToken();
+
+                if (weight > 0) {
+                    (uint256 stakedAmount,) = smartChef.userInfo(address(this));  // fetch last staked amount
+                    uint256 prevRewardBalance = IERC20(rewardToken).balanceOf(address(this));
+                    smartChef.withdraw(stakedAmount);  // withdraw all cake and rewardToken.
+                    uint256 afterRewardBalance = IERC20(rewardToken).balanceOf(address(this));
+
+                    uint256 actualRewardBalance = afterRewardBalance.sub(prevRewardBalance);
+                    _swap(rewardToken, actualRewardBalance);
+                }
+            
+            }
+
+            uint256 afterBalance = cakeToken.balanceOf(address(this));
+            totalFunds = afterBalance.sub(prevBalance);
+        }
+        
+    }
+
+    function _reinvest() internal {
+        require(smartChefArray.length > 0, "No smartChefArray");
+        uint256 prevBalance = cakeToken.balanceOf(address(this));
+
+        for (uint256 i = 0; i < length; ++i) {
+            uint256 weight = weightsArray[i];
+            smartChef = ISmartChefInitializable(smartChefArray[i]);
+
+            if (weight > 0) {
+                uint256 investAmount = totalInvest.mul(weight).div(1e9);
+                cakeToken.approve(smartChefArray[i], investAmount);
+                smartChef.deposit(investAmount);
+            }
+        }
+
+        uint256 afterBalance = cakeToken.balanceOf(address(this));
+        totalInvest = prevBalance.sub(afterBalance);    // actualInvestAmount
+    }
+
+    function _updateRate(uint256 tokenId_) internal {
+        uint256 _rewardPerToken = _getRewardPerToken();
+        rewardPerTokenStored = _rewardPerToken;
+    }
 }
