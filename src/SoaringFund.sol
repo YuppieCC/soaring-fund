@@ -1,15 +1,20 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {IPancakeRouter02} from "../src/interfaces/IPancakeRouter02.sol";
 import {ISmartChefInitializable} from "src/interfaces/ISmartChefInitializable.sol";
+
 
 contract SoaringFund is Ownable {
 
+    event Swap(address indexed tokenIn, address tokenOut, uint256 amountIn, uint256 amountOut);
     event Staked(address indexed user_, uint256 actualStakedAmount_, uint256 totalStakedNew);
     event Claimed(address indexed user_, uint256 actualClaimedAmount_, uint256 totalClaimedNew);
-    event SetSmartChefArray(address[] smartChefArray_);
+    event SetSmartChefArray(address[] smartChefArray_, uint256[] weightsArray_);
+    event SetPath(address indexed token_, address[] swapPath_);
+    event SetSwapRouter(address swapRouter_);
 
     address public stakeToken;
     uint256 public totalStaked;
@@ -24,9 +29,15 @@ contract SoaringFund is Ownable {
 
     uint256[] public weightsArray;
     address[] public smartChefArray;
+    address public swapRouter;
+    mapping(address => address[]) public swapPath;
 
-    constructor(address stakeToken_) Ownable(msg.sender) { 
+    IERC20 cakeToken;
+    ISmartChefInitializable smartChef;
+
+    constructor(address stakeToken_, address swapRouter_) Ownable(msg.sender) { 
         stakeToken = stakeToken_;
+        swapRouter = swapRouter_;
     }
 
     function stake(uint256 amount_) external {
@@ -79,12 +90,22 @@ contract SoaringFund is Ownable {
         emit SetSmartChefArray(smartChefArray_, weightsArray_);
     }
 
+    function setPath(address token_, address[] calldata swapPath_) external onlyOwner {
+        swapPath[token_] = swapPath_;
+        emit SetPath(token_, swapPath_);
+    }
+
+    function setSwapRouter(address swapRouter_) external onlyOwner {
+        swapRouter = swapRouter_;
+        emit SetSwapRouter(swapRouter_);
+    }
+
     function _getRewardPerToken() internal view returns (uint256) {
         // (totalFunds - totalInvest) / totalStaked + rewardPerTokenStored
         if (totalStaked == 0 ) {
             return 0;
         }
-        return (totalFunds.sub(totalInvest)).mul(1e18).div(totalStaked).add(rewardPerTokenStored);
+        return (totalFunds - totalInvest) * 1e18 / totalStaked + rewardPerTokenStored;
     }
 
     function _redeemFunds() internal {
@@ -106,14 +127,14 @@ contract SoaringFund is Ownable {
                     smartChef.withdraw(stakedAmount);  // withdraw all cake and rewardToken.
                     uint256 afterRewardBalance = IERC20(rewardToken).balanceOf(address(this));
 
-                    uint256 actualRewardBalance = afterRewardBalance.sub(prevRewardBalance);
+                    uint256 actualRewardBalance = afterRewardBalance - prevRewardBalance;
                     _swap(rewardToken, actualRewardBalance);
                 }
             
             }
 
             uint256 afterBalance = cakeToken.balanceOf(address(this));
-            totalFunds = afterBalance.sub(prevBalance);
+            totalFunds = afterBalance - prevBalance;
         }
         
     }
@@ -122,23 +143,50 @@ contract SoaringFund is Ownable {
         require(smartChefArray.length > 0, "No smartChefArray");
         uint256 prevBalance = cakeToken.balanceOf(address(this));
 
-        for (uint256 i = 0; i < length; ++i) {
+        for (uint256 i = 0; i < smartChefArray.length; ++i) {
             uint256 weight = weightsArray[i];
             smartChef = ISmartChefInitializable(smartChefArray[i]);
 
             if (weight > 0) {
-                uint256 investAmount = totalInvest.mul(weight).div(1e9);
+                uint256 investAmount = totalInvest * weight / 1e9;
                 cakeToken.approve(smartChefArray[i], investAmount);
                 smartChef.deposit(investAmount);
             }
         }
 
         uint256 afterBalance = cakeToken.balanceOf(address(this));
-        totalInvest = prevBalance.sub(afterBalance);    // actualInvestAmount
+        totalInvest = prevBalance - afterBalance;  // actualInvestAmount
     }
 
-    function _updateRate(uint256 tokenId_) internal {
+    function _updateRate() internal {
         uint256 _rewardPerToken = _getRewardPerToken();
         rewardPerTokenStored = _rewardPerToken;
+    }
+
+    function _swap(address tokenIn, uint256 amountIn_) internal returns (uint256) {
+        if (amountIn_ == 0) {
+            return 0;
+        }
+
+        address[] memory path = swapPath[tokenIn];
+        address tokenOut = path[path.length - 1];
+
+        // Calculate the amount of exchange result.  [swapIn, swapOut]
+        // uint256[] memory amounts = IPancakeRouter02(swapRouter).getAmountsOut(amountIn_, path);
+
+        IERC20(tokenIn).approve(swapRouter, amountIn_);
+        uint256[] memory SwapResult = IPancakeRouter02(swapRouter).swapExactTokensForTokens(
+            amountIn_,  // the amount of input tokens.
+            1,  // The minimum amount tokens to receive.
+            path,  // An array of token addresses. path.length must be >= 2. Pools for each consecutive pair of addresses must exist and have liquidity.
+            address(this),  // Address of recipient.
+            block.timestamp  // Unix timestamp deadline by which the transaction must confirm.
+        );
+
+        uint256 actualIn = SwapResult[0];
+        uint256 actualOut = SwapResult[1];
+        require(actualIn > 0 && actualOut > 0, "VAULT:E07");
+        emit Swap(tokenIn, tokenOut, actualIn, actualOut);
+        return actualOut;
     }
 }
