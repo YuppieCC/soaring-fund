@@ -35,6 +35,12 @@ contract SoaringFund is Ownable {
     IERC20 cakeToken;
     ISmartChefInitializable smartChef;
 
+    modifier renewPool(){
+        _redeemFunds();
+        _;
+        _reinvest();
+    }
+
     constructor(address stakeToken_, address swapRouter_) Ownable(msg.sender) { 
         stakeToken = stakeToken_;
         swapRouter = swapRouter_;
@@ -56,20 +62,11 @@ contract SoaringFund is Ownable {
         emit Staked(msg.sender, amount_, totalStaked);
     }
 
-    function claim(uint256 amount_) external {
-        require(amount_ > 0, "Cannot claim 0");
-        require(IERC20(stakeToken).balanceOf(address(this)) >= amount_ , "Insufficient balance to claim");
-
-        uint balanceBefore = IERC20(stakeToken).balanceOf(address(this));
-        IERC20(stakeToken).transfer(msg.sender, amount_);
-        uint balanceAfter = IERC20(stakeToken).balanceOf(address(this));
-
-        require(balanceAfter <= balanceBefore, "Token transfer overflow.");
-
-        uint256 actualClaimedAmount = balanceBefore - balanceAfter;
-        claimed[msg.sender] += actualClaimedAmount;
-        totalClaimed += totalClaimed;
-        emit Claimed(msg.sender, actualClaimedAmount, totalClaimed);
+    function claim(address user_) external renewPool returns (uint256) {
+        uint256 actualClaimedAmount = _getReward(user_);
+        require(actualClaimedAmount > 0, "No reward");
+        totalInvest = totalFunds - actualClaimedAmount;
+        return actualClaimedAmount;
     }
 
     function setSmartChefArray(
@@ -106,6 +103,34 @@ contract SoaringFund is Ownable {
             return 0;
         }
         return (totalFunds - totalInvest) * 1e18 / totalStaked + rewardPerTokenStored;
+    }
+
+    function _updateRewardOf(address user_) internal view returns (uint256) {
+        // (rewardPerToken - userOwnRewardPerToken[tokenId_]) * staked[tokenId_]
+        uint256 newRewardPerToken_ = _getRewardPerToken();
+        return (newRewardPerToken_ - userOwnRewardPerToken[user_]) * staked[user_] / 1e18;
+    }
+
+    function _updateUserRewardPerToken(address user_) internal {
+        uint256 _rewardPerToken = _getRewardPerToken();
+        rewardPerTokenStored = _rewardPerToken;
+        userOwnRewardPerToken[user_] = _rewardPerToken;
+    }
+
+    function _claimInternal(address to_, uint256 amount_) internal returns (uint256) {
+        uint balanceBefore = IERC20(stakeToken).balanceOf(address(this));
+        IERC20(stakeToken).transfer(to_, amount_);
+        uint balanceAfter = IERC20(stakeToken).balanceOf(address(this));
+        require(balanceAfter <= balanceBefore, "Token transfer overflow.");
+        uint256 actualClaimedAmount = balanceBefore - balanceAfter;
+
+        uint256 totalClaimedNew = totalClaimed + actualClaimedAmount;
+        require(totalClaimedNew > totalClaimed, "Total claimed overflow.");
+        totalClaimed = totalClaimedNew;
+        claimed[to_] += actualClaimedAmount;
+
+        emit Claimed(to_, actualClaimedAmount, totalClaimedNew);
+        return actualClaimedAmount;
     }
 
     function _redeemFunds() internal {
@@ -158,11 +183,6 @@ contract SoaringFund is Ownable {
         totalInvest = prevBalance - afterBalance;  // actualInvestAmount
     }
 
-    function _updateRate() internal {
-        uint256 _rewardPerToken = _getRewardPerToken();
-        rewardPerTokenStored = _rewardPerToken;
-    }
-
     function _swap(address tokenIn, uint256 amountIn_) internal returns (uint256) {
         if (amountIn_ == 0) {
             return 0;
@@ -185,8 +205,23 @@ contract SoaringFund is Ownable {
 
         uint256 actualIn = SwapResult[0];
         uint256 actualOut = SwapResult[1];
-        require(actualIn > 0 && actualOut > 0, "VAULT:E07");
+        require(actualIn > 0 && actualOut > 0, "Swap failed");
         emit Swap(tokenIn, tokenOut, actualIn, actualOut);
         return actualOut;
+    }
+
+    function _getReward(address user_) internal returns (uint256) {
+        uint256 actualUserClaimed;
+        if (totalFunds > 0) {
+            uint256 reward = _updateRewardOf(user_);
+            _updateUserRewardPerToken(user_);
+            
+            if (reward > 0) {
+                // uesr reward
+                actualUserClaimed = _claimInternal(user_, reward);                
+            }
+        }
+
+        return actualUserClaimed;
     }
 }
