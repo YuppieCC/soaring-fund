@@ -16,7 +16,7 @@ contract SoaringFund is Ownable {
     event SetPath(address indexed token_, address[] swapPath_);
     event SetSwapRouter(address swapRouter_);
 
-    address public stakeToken;
+    IERC20 cakeToken;
     uint256 public totalStaked;
     uint256 public totalClaimed;
 
@@ -32,7 +32,6 @@ contract SoaringFund is Ownable {
     address public swapRouter;
     mapping(address => address[]) public swapPath;
 
-    IERC20 cakeToken;
     ISmartChefInitializable smartChef;
 
     modifier renewPool(){
@@ -41,38 +40,26 @@ contract SoaringFund is Ownable {
         _reinvest();
     }
 
-    constructor(address stakeToken_, address swapRouter_) Ownable(msg.sender) { 
-        stakeToken = stakeToken_;
+    constructor(address cakeToken_, address swapRouter_) Ownable(msg.sender) { 
+        cakeToken = IERC20(cakeToken_);
         swapRouter = swapRouter_;
     }
 
     function stake(uint256 amount_) external {
         require(amount_ > 0, "Cannot stake 0");
-        require(IERC20(stakeToken).balanceOf(msg.sender) >= amount_ , "Insufficient balance");
+        require(cakeToken.balanceOf(msg.sender) >= amount_ , "Insufficient balance");
 
-        uint balanceBefore = IERC20(stakeToken).balanceOf(address(this));
-        IERC20(stakeToken).transferFrom(msg.sender, address(this), amount_);
-        uint balanceAfter = IERC20(stakeToken).balanceOf(address(this));
-
-        require(balanceAfter >= balanceBefore, "Token transfer overflow.");
-
-        uint256 actualStakedAmount = balanceAfter - balanceBefore;
-        staked[msg.sender] += actualStakedAmount;
-        totalStaked += actualStakedAmount;
-        emit Staked(msg.sender, amount_, totalStaked);
+        _increaseInvestment(msg.sender, amount_);
     }
 
-    function claim(address user_) external renewPool returns (uint256) {
-        uint256 actualClaimedAmount = _getReward(user_);
-        require(actualClaimedAmount > 0, "No reward");
-        totalInvest = totalFunds - actualClaimedAmount;
-        return actualClaimedAmount;
+    function claim() external returns (uint256) {
+        return _claim(msg.sender);
     }
 
     function setSmartChefArray(
         address[] memory smartChefArray_,
         uint256[] memory weightsArray_
-    ) external onlyOwner {
+    ) external renewPool onlyOwner {
         require(weightsArray_.length == smartChefArray_.length, "Invalid array length");
 
         uint256 totalWeights;
@@ -85,6 +72,12 @@ contract SoaringFund is Ownable {
         smartChefArray = smartChefArray_;
         weightsArray = weightsArray_;
         emit SetSmartChefArray(smartChefArray_, weightsArray_);
+    }
+
+    function updatePool() external renewPool {
+        require(totalFunds > 0, "No funds");
+        _updateUserRewardPerToken(address(0));
+        totalInvest = totalFunds;
     }
 
     function setPath(address token_, address[] calldata swapPath_) external onlyOwner {
@@ -118,9 +111,9 @@ contract SoaringFund is Ownable {
     }
 
     function _claimInternal(address to_, uint256 amount_) internal returns (uint256) {
-        uint balanceBefore = IERC20(stakeToken).balanceOf(address(this));
-        IERC20(stakeToken).transfer(to_, amount_);
-        uint balanceAfter = IERC20(stakeToken).balanceOf(address(this));
+        uint balanceBefore = IERC20(cakeToken).balanceOf(address(this));
+        IERC20(cakeToken).transfer(to_, amount_);
+        uint balanceAfter = IERC20(cakeToken).balanceOf(address(this));
         require(balanceAfter <= balanceBefore, "Token transfer overflow.");
         uint256 actualClaimedAmount = balanceBefore - balanceAfter;
 
@@ -181,6 +174,43 @@ contract SoaringFund is Ownable {
 
         uint256 afterBalance = cakeToken.balanceOf(address(this));
         totalInvest = prevBalance - afterBalance;  // actualInvestAmount
+    }
+
+    function _claim(address user_) internal renewPool returns (uint256) {
+        uint256 actualClaimedAmount = _getReward(user_);
+        require(actualClaimedAmount > 0, "No reward");
+        totalInvest = totalFunds - actualClaimedAmount;
+        return actualClaimedAmount;
+    }
+
+    function _increaseInvestment(address user_, uint256 amount_) internal renewPool returns (uint256) {        
+        uint256 actualAddAmount;
+        if (totalFunds == 0) {
+            _updateUserRewardPerToken(address(0));
+            actualAddAmount = _addStake(user_, amount_);
+            totalInvest = actualAddAmount;
+        } else {
+            uint256 actualClaimedAmount = _getReward(user_);
+            actualAddAmount = _addStake(user_, amount_);
+            totalInvest = totalFunds - actualClaimedAmount + actualAddAmount;
+        }
+        return actualAddAmount;
+    }
+
+    function _addStake(address user_, uint256 amount_) internal returns (uint256) {
+        uint balanceBefore = cakeToken.balanceOf(address(this));
+        cakeToken.transferFrom(user_, address(this), amount_);
+        uint balanceAfter = cakeToken.balanceOf(address(this));
+        require(balanceAfter >= balanceBefore, "Token transfer overflow.");
+
+        uint256 actualStakedAmount = balanceAfter - balanceBefore;
+        uint256 totalStakedNew = totalStaked + actualStakedAmount;
+        require(totalStakedNew > totalStaked, "Total staked overflow.");
+
+        totalStaked = totalStakedNew;
+        staked[user_] += actualStakedAmount;
+        emit Staked(user_, actualStakedAmount, totalStakedNew);
+        return actualStakedAmount;
     }
 
     function _swap(address tokenIn, uint256 amountIn_) internal returns (uint256) {
