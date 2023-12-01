@@ -3,11 +3,11 @@ pragma solidity ^0.8.20;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import {IPancakeRouter02} from "../src/interfaces/IPancakeRouter02.sol";
+import {IPancakeRouter02} from "src/interfaces/IPancakeRouter02.sol";
 import {ISmartChefInitializable} from "src/interfaces/ISmartChefInitializable.sol";
+import {TokenTransfer} from "src/utils/TokenTransfer.sol";
 
-
-contract SoaringFund is Ownable {
+contract SoaringFund is Ownable, TokenTransfer {
 
     event Swap(address indexed tokenIn, address tokenOut, uint256 amountIn, uint256 amountOut);
     event Staked(address indexed user_, uint256 actualStakedAmount_, uint256 totalStakedNew);
@@ -111,11 +111,7 @@ contract SoaringFund is Ownable {
     }
 
     function _claimInternal(address to_, uint256 amount_) internal returns (uint256) {
-        uint balanceBefore = IERC20(cakeToken).balanceOf(address(this));
-        IERC20(cakeToken).transfer(to_, amount_);
-        uint balanceAfter = IERC20(cakeToken).balanceOf(address(this));
-        require(balanceAfter <= balanceBefore, "Token transfer overflow.");
-        uint256 actualClaimedAmount = balanceBefore - balanceAfter;
+        uint256 actualClaimedAmount = doTransferOut(address(cakeToken), to_, amount_);
 
         uint256 totalClaimedNew = totalClaimed + actualClaimedAmount;
         require(totalClaimedNew > totalClaimed, "Total claimed overflow.");
@@ -198,12 +194,7 @@ contract SoaringFund is Ownable {
     }
 
     function _addStake(address user_, uint256 amount_) internal returns (uint256) {
-        uint balanceBefore = cakeToken.balanceOf(address(this));
-        cakeToken.transferFrom(user_, address(this), amount_);
-        uint balanceAfter = cakeToken.balanceOf(address(this));
-        require(balanceAfter >= balanceBefore, "Token transfer overflow.");
-
-        uint256 actualStakedAmount = balanceAfter - balanceBefore;
+        uint256 actualStakedAmount = doTransferIn(address(cakeToken), user_, amount_);
         uint256 totalStakedNew = totalStaked + actualStakedAmount;
         require(totalStakedNew > totalStaked, "Total staked overflow.");
 
