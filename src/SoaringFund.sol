@@ -12,6 +12,7 @@ contract SoaringFund is Ownable, TokenTransfer {
     event Swap(address indexed tokenIn, address tokenOut, uint256 amountIn, uint256 amountOut);
     event Staked(address indexed user_, uint256 actualStakedAmount_, uint256 totalStakedNew);
     event Claimed(address indexed user_, uint256 actualClaimedAmount_, uint256 totalClaimedNew);
+    event ExitFunds(address indexed user_, uint256 actualExitAmount_, uint256 totalStakedNew);
     event SetSmartChefArray(address[] smartChefArray_, uint256[] weightsArray_);
     event SetPath(address indexed token_, address[] swapPath_);
     event SetSwapRouter(address swapRouter_);
@@ -54,6 +55,23 @@ contract SoaringFund is Ownable, TokenTransfer {
 
     function claim() external returns (uint256) {
         return _claim(msg.sender);
+    }
+
+    function exitFunds() external renewPool returns (uint256) {
+        require(staked[msg.sender] > 0, "No stake");
+
+        uint256 actualClaimedAmount = _getReward(msg.sender);
+        uint256 actualExitAmount = doTransferOut(address(cakeToken), msg.sender, staked[msg.sender]);
+
+        staked[msg.sender] = 0;
+        userOwnRewardPerToken[msg.sender] = 0;
+        claimed[msg.sender] += actualClaimedAmount;
+
+        totalClaimed += actualClaimedAmount;
+        totalStaked -= actualExitAmount;
+        totalInvest = totalFunds - actualClaimedAmount - actualExitAmount;
+        emit ExitFunds(msg.sender, actualExitAmount, totalStaked);
+        return actualExitAmount;
     }
 
     function setSmartChefArray(

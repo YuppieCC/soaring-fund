@@ -82,4 +82,36 @@ contract SoaringFund_BSCTest is Test {
         assertTrue(soaringFund.totalClaimed() > 0);
         vm.stopPrank();
     }
+
+    function test_exitFunds() public {
+        vm.startPrank(CAKE_HOLDER);
+        uint testStakeNum = 100e18;
+        IERC20(CAKE).approve(address(soaringFund), testStakeNum);
+        soaringFund.stake(testStakeNum);
+
+        vm.warp(block.timestamp + 10000);
+        vm.roll(block.number + 1000);
+
+        soaringFund.updatePool();
+
+        vm.warp(block.timestamp + 50000);
+        vm.roll(block.number + 5000);
+
+        soaringFund.claim();
+        assertTrue(soaringFund.userOwnRewardPerToken(CAKE_HOLDER) > 0);
+
+        vm.warp(block.timestamp + 100000);
+        vm.roll(block.number + 10000);
+
+        uint256 stakedAmount = soaringFund.staked(CAKE_HOLDER);
+        uint256 beforeExitBalance = IERC20(CAKE).balanceOf(CAKE_HOLDER);        
+        soaringFund.exitFunds();
+        uint256 afterExitBalance = IERC20(CAKE).balanceOf(CAKE_HOLDER);
+
+        assertTrue(afterExitBalance - beforeExitBalance > stakedAmount);
+        assertTrue(soaringFund.totalStaked() == 0);
+        assertTrue(soaringFund.totalClaimed() > 0);
+        assertTrue(soaringFund.staked(CAKE_HOLDER) == 0);
+        vm.stopPrank();
+    }
 }
