@@ -6,8 +6,9 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IPancakeRouter02} from "src/interfaces/IPancakeRouter02.sol";
 import {ISmartChefInitializable} from "src/interfaces/ISmartChefInitializable.sol";
 import {TokenTransfer} from "src/utils/TokenTransfer.sol";
+import {ISoaringFund} from "src/interfaces/ISoaringFund.sol";
 
-contract SoaringFund is Ownable, TokenTransfer {
+contract SoaringFund is ISoaringFund, Ownable, TokenTransfer {
 
     event Swap(address indexed tokenIn, address tokenOut, uint256 amountIn, uint256 amountOut);
     event Staked(address indexed user_, uint256 actualStakedAmount_, uint256 totalStakedNew);
