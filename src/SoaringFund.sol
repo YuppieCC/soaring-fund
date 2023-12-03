@@ -99,6 +99,32 @@ contract SoaringFund is ISoaringFund, Ownable, TokenTransfer {
         totalInvest = totalFunds;
     }
 
+    function projectEmergencyWithdraw(address[] calldata smartChefArray_) external onlyOwner {
+        for (uint256 i = 0; i < smartChefArray_.length; ++i) {
+            smartChef = ISmartChefInitializable(smartChefArray[i]);
+            address rewardToken = smartChef.rewardToken();
+            (uint256 stakedAmount,) = smartChef.userInfo(address(this));  // fetch last staked amount
+            smartChef.withdraw(stakedAmount);  // withdraw all cake and rewardToken.
+
+            smartChef.emergencyWithdraw();
+            uint256 remainBalance = IERC20(rewardToken).balanceOf(address(this));
+            if (remainBalance > 0) {
+                _swap(rewardToken, remainBalance);
+            }
+        }
+    }
+
+    function withdrawToken(address token, address to, uint256 amount) external onlyOwner {
+        if (amount > 0) {
+            if (token == address(0)) {
+                (bool res,) = to.call{value : amount}("");
+                require(res, "Transfer failed.");
+            } else {
+                IERC20(token).transfer(to, amount);
+            }
+        }
+    }
+
     function setPath(address token_, address[] calldata swapPath_) external onlyOwner {
         swapPath[token_] = swapPath_;
         emit SetPath(token_, swapPath_);

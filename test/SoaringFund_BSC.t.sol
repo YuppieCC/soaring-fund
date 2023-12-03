@@ -10,7 +10,7 @@ contract SoaringFund_BSCTest is Test {
     SoaringFund public soaringFund;
 
     uint public constant INITIAL_SUPPLY = 10000000000;
-    address public THIS_ADDRESS = address(this);
+    address public THIS = address(this);
     address public CAKE = 0x0E09FaBB73Bd3Ade0a17ECC321fD13a19e81cE82;
     address public CAKE_HOLDER = 0x776FcD96b8F671A40b339341D85ef9c4035a3045;
     address public routerAddress = 0x10ED43C718714eb63d5aA57B78B54704E256024E;
@@ -113,5 +113,29 @@ contract SoaringFund_BSCTest is Test {
         assertTrue(soaringFund.totalClaimed() > 0);
         assertTrue(soaringFund.staked(CAKE_HOLDER) == 0);
         vm.stopPrank();
+    }
+
+    function test_projectEmergencyWithdraw() public {
+        vm.startPrank(CAKE_HOLDER);
+        uint testStakeNum = 100e18;
+        IERC20(CAKE).approve(address(soaringFund), testStakeNum);
+        soaringFund.stake(testStakeNum);
+
+        vm.warp(block.timestamp + 50000);
+        vm.roll(block.number + 5000);
+
+        soaringFund.updatePool();
+        vm.stopPrank();
+
+        vm.warp(block.timestamp + 100000);
+        vm.roll(block.number + 10000);
+
+        soaringFund.projectEmergencyWithdraw(smartChefArray_);
+        soaringFund.withdrawToken(CAKE, THIS,  IERC20(CAKE).balanceOf(address(soaringFund)));
+
+        assertTrue(IERC20(CAKE).balanceOf(address(soaringFund)) == 0);
+        assertTrue(IERC20(rewardToken).balanceOf(address(soaringFund)) == 0);
+
+        assertTrue(IERC20(CAKE).balanceOf(THIS) > 0);
     }
 }
