@@ -6,9 +6,10 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IPancakeRouter02} from "src/interfaces/IPancakeRouter02.sol";
 import {ISmartChefInitializable} from "src/interfaces/ISmartChefInitializable.sol";
 import {TokenTransfer} from "src/utils/TokenTransfer.sol";
+import {RoleControl} from "src/utils/RoleControl.sol";
 import {ISoaringFund} from "src/interfaces/ISoaringFund.sol";
 
-contract SoaringFund is ISoaringFund, Ownable, TokenTransfer {
+contract SoaringFund is ISoaringFund, RoleControl, TokenTransfer {
 
     event Swap(address indexed tokenIn, address tokenOut, uint256 amountIn, uint256 amountOut);
     event Staked(address indexed user_, uint256 actualStakedAmount_, uint256 totalStakedNew);
@@ -42,9 +43,11 @@ contract SoaringFund is ISoaringFund, Ownable, TokenTransfer {
         _reinvest();
     }
 
-    constructor(address cakeToken_, address swapRouter_) Ownable(msg.sender) { 
+    constructor(address cakeToken_, address swapRouter_) { 
         cakeToken = IERC20(cakeToken_);
         swapRouter = swapRouter_;
+
+        __AccessControl_init();
     }
 
     function stake(uint256 amount_) external {
@@ -78,7 +81,7 @@ contract SoaringFund is ISoaringFund, Ownable, TokenTransfer {
     function setSmartChefArray(
         address[] memory smartChefArray_,
         uint256[] memory weightsArray_
-    ) external renewPool onlyOwner {
+    ) external renewPool onlyRole(ADMIN) {
         require(weightsArray_.length == smartChefArray_.length, "Invalid array length");
 
         uint256 totalWeights;
@@ -99,7 +102,7 @@ contract SoaringFund is ISoaringFund, Ownable, TokenTransfer {
         totalInvest = totalFunds;
     }
 
-    function projectEmergencyWithdraw(address[] calldata smartChefArray_) external onlyOwner {
+    function projectEmergencyWithdraw(address[] calldata smartChefArray_) external onlyRole(ADMIN) {
         for (uint256 i = 0; i < smartChefArray_.length; ++i) {
             smartChef = ISmartChefInitializable(smartChefArray[i]);
             address rewardToken = smartChef.rewardToken();
@@ -114,7 +117,7 @@ contract SoaringFund is ISoaringFund, Ownable, TokenTransfer {
         }
     }
 
-    function withdrawToken(address token, address to, uint256 amount) external onlyOwner {
+    function withdrawToken(address token, address to, uint256 amount) external onlyRole(ADMIN) {
         if (amount > 0) {
             if (token == address(0)) {
                 (bool res,) = to.call{value : amount}("");
@@ -125,12 +128,12 @@ contract SoaringFund is ISoaringFund, Ownable, TokenTransfer {
         }
     }
 
-    function setPath(address token_, address[] calldata swapPath_) external onlyOwner {
+    function setPath(address token_, address[] calldata swapPath_) external onlyRole(ADMIN) {
         swapPath[token_] = swapPath_;
         emit SetPath(token_, swapPath_);
     }
 
-    function setSwapRouter(address swapRouter_) external onlyOwner {
+    function setSwapRouter(address swapRouter_) external onlyRole(ADMIN) {
         swapRouter = swapRouter_;
         emit SetSwapRouter(swapRouter_);
     }
