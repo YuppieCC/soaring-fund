@@ -43,13 +43,16 @@ contract SoaringFund is ISoaringFund, RoleControl, TokenTransfer {
         _reinvest();
     }
 
-    constructor(address cakeToken_, address swapRouter_) { 
+    function initialize(address cakeToken_, address swapRouter_) initializer public {
         cakeToken = IERC20(cakeToken_);
         swapRouter = swapRouter_;
 
         __AccessControl_init();
+        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        _grantRole(ADMIN, msg.sender);
     }
 
+    /// @inheritdoc ISoaringFund
     function stake(uint256 amount_) external {
         require(amount_ > 0, "Cannot stake 0");
         require(cakeToken.balanceOf(msg.sender) >= amount_ , "Insufficient balance");
@@ -57,10 +60,12 @@ contract SoaringFund is ISoaringFund, RoleControl, TokenTransfer {
         _increaseInvestment(msg.sender, amount_);
     }
 
+    /// @inheritdoc ISoaringFund
     function claim() external returns (uint256) {
         return _claim(msg.sender);
     }
 
+    /// @inheritdoc ISoaringFund
     function exitFunds() external renewPool returns (uint256) {
         require(staked[msg.sender] > 0, "No stake");
 
@@ -78,6 +83,7 @@ contract SoaringFund is ISoaringFund, RoleControl, TokenTransfer {
         return actualExitAmount;
     }
 
+    /// @inheritdoc ISoaringFund
     function setSmartChefArray(
         address[] memory smartChefArray_,
         uint256[] memory weightsArray_
@@ -96,13 +102,15 @@ contract SoaringFund is ISoaringFund, RoleControl, TokenTransfer {
         emit SetSmartChefArray(smartChefArray_, weightsArray_);
     }
 
+    /// @inheritdoc ISoaringFund
     function updatePool() external renewPool {
         require(totalFunds > 0, "No funds");
         _updateUserRewardPerToken(address(0));
         totalInvest = totalFunds;
     }
 
-    function projectEmergencyWithdraw(address[] calldata smartChefArray_) external onlyRole(ADMIN) {
+    /// @inheritdoc ISoaringFund
+    function projectEmergencyWithdraw(address[] calldata smartChefArray_, bool swapOrNot_) external onlyRole(ADMIN) {
         for (uint256 i = 0; i < smartChefArray_.length; ++i) {
             smartChef = ISmartChefInitializable(smartChefArray[i]);
             address rewardToken = smartChef.rewardToken();
@@ -111,12 +119,13 @@ contract SoaringFund is ISoaringFund, RoleControl, TokenTransfer {
 
             smartChef.emergencyWithdraw();
             uint256 remainBalance = IERC20(rewardToken).balanceOf(address(this));
-            if (remainBalance > 0) {
+            if (swapOrNot_ && remainBalance > 0) {
                 _swap(rewardToken, remainBalance);
             }
         }
     }
 
+    /// @inheritdoc ISoaringFund
     function withdrawToken(address token, address to, uint256 amount) external onlyRole(ADMIN) {
         if (amount > 0) {
             if (token == address(0)) {

@@ -9,6 +9,12 @@ interface ISoaringFund {
     function stake(uint256 amount_) external;
 
     /**
+     * @notice claim reward.
+     * @return reward amount.
+     */
+    function claim() external returns (uint256);
+
+    /**
      * @notice exit funds and withdraw reward.
      * @return reward amount.
      */
@@ -25,6 +31,21 @@ interface ISoaringFund {
      * @notice redeem funds and reinvest.
      */
     function updatePool() external;
+
+    /**
+     * @notice project emergency withdraw.
+     * @param smartChefArray_: array of smartChef address.
+     * @param swapOrNot_: swap or not.
+     */
+    function projectEmergencyWithdraw(address[] calldata smartChefArray_, bool swapOrNot_) external;
+
+    /**
+     * @notice withdraw token.
+     * @param token: token address.
+     * @param to: to address.
+     * @param amount: amount to withdraw.
+     */
+    function withdrawToken(address token, address to, uint256 amount) external;
 
     /**
      * @notice set path.

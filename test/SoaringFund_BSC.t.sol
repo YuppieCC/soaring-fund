@@ -4,10 +4,12 @@ pragma solidity ^0.8.13;
 import {Test, console2} from "forge-std/Test.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SoaringFund} from "../src/SoaringFund.sol";
+import {TransparentUpgradeableProxy} from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 
 
 contract SoaringFund_BSCTest is Test {
     SoaringFund public soaringFund;
+    TransparentUpgradeableProxy public proxy;
 
     uint public constant INITIAL_SUPPLY = 10000000000;
     address public THIS = address(this);
@@ -24,7 +26,9 @@ contract SoaringFund_BSCTest is Test {
     ];
 
     function setUp() public {
-        soaringFund = new SoaringFund(CAKE, routerAddress);
+        soaringFund = SoaringFund(address(new TransparentUpgradeableProxy(address(new SoaringFund()), THIS, '')));
+        soaringFund.initialize(CAKE, routerAddress);
+
         soaringFund.setPath(rewardToken, path);
         soaringFund.setSmartChefArray(smartChefArray_, weightsArray_);
         vm.warp(block.timestamp + 10000);
@@ -130,7 +134,7 @@ contract SoaringFund_BSCTest is Test {
         vm.warp(block.timestamp + 100000);
         vm.roll(block.number + 10000);
 
-        soaringFund.projectEmergencyWithdraw(smartChefArray_);
+        soaringFund.projectEmergencyWithdraw(smartChefArray_, true);
         soaringFund.withdrawToken(CAKE, THIS,  IERC20(CAKE).balanceOf(address(soaringFund)));
 
         assertTrue(IERC20(CAKE).balanceOf(address(soaringFund)) == 0);
