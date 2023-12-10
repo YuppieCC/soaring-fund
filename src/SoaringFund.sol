@@ -137,11 +137,13 @@ contract SoaringFund is ISoaringFund, RoleControl, TokenTransfer {
         }
     }
 
+    /// @inheritdoc ISoaringFund
     function setPath(address token_, address[] calldata swapPath_) external onlyRole(ADMIN) {
         swapPath[token_] = swapPath_;
         emit SetPath(token_, swapPath_);
     }
 
+    /// @inheritdoc ISoaringFund
     function setSwapRouter(address swapRouter_) external onlyRole(ADMIN) {
         swapRouter = swapRouter_;
         emit SetSwapRouter(swapRouter_);
