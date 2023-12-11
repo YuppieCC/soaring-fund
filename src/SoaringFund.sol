@@ -3,13 +3,14 @@ pragma solidity ^0.8.20;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {ReentrancyGuardUpgradeable} from "@openzeppelin-contracts-upgradeable/contracts/utils/ReentrancyGuardUpgradeable.sol";
 import {IPancakeRouter02} from "src/interfaces/IPancakeRouter02.sol";
 import {ISmartChefInitializable} from "src/interfaces/ISmartChefInitializable.sol";
 import {TokenTransfer} from "src/utils/TokenTransfer.sol";
 import {RoleControl} from "src/utils/RoleControl.sol";
 import {ISoaringFund} from "src/interfaces/ISoaringFund.sol";
 
-contract SoaringFund is ISoaringFund, RoleControl, TokenTransfer {
+contract SoaringFund is ISoaringFund, ReentrancyGuardUpgradeable, RoleControl, TokenTransfer {
 
     event Swap(address indexed tokenIn, address tokenOut, uint256 amountIn, uint256 amountOut);
     event Staked(address indexed user_, uint256 actualStakedAmount_, uint256 totalStakedNew);
@@ -48,12 +49,13 @@ contract SoaringFund is ISoaringFund, RoleControl, TokenTransfer {
         swapRouter = swapRouter_;
 
         __AccessControl_init();
+        __ReentrancyGuard_init();
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _grantRole(ADMIN, msg.sender);
     }
 
     /// @inheritdoc ISoaringFund
-    function stake(uint256 amount_) external {
+    function stake(uint256 amount_) external nonReentrant {
         require(amount_ > 0, "Cannot stake 0");
         require(cakeToken.balanceOf(msg.sender) >= amount_ , "Insufficient balance");
 
@@ -61,12 +63,12 @@ contract SoaringFund is ISoaringFund, RoleControl, TokenTransfer {
     }
 
     /// @inheritdoc ISoaringFund
-    function claim() external returns (uint256) {
+    function claim() external nonReentrant returns (uint256) {
         return _claim(msg.sender);
     }
 
     /// @inheritdoc ISoaringFund
-    function exitFunds() external renewPool returns (uint256) {
+    function exitFunds() external nonReentrant renewPool returns (uint256) {
         require(staked[msg.sender] > 0, "No stake");
 
         uint256 actualClaimedAmount = _getReward(msg.sender);
@@ -103,7 +105,7 @@ contract SoaringFund is ISoaringFund, RoleControl, TokenTransfer {
     }
 
     /// @inheritdoc ISoaringFund
-    function updatePool() external renewPool {
+    function updatePool() external nonReentrant renewPool {
         require(totalFunds > 0, "No funds");
         _updateUserRewardPerToken(address(0));
         totalInvest = totalFunds;
