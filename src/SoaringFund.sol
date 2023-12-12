@@ -13,9 +13,11 @@ import {ISoaringFund} from "src/interfaces/ISoaringFund.sol";
 contract SoaringFund is ISoaringFund, ReentrancyGuardUpgradeable, RoleControl, TokenTransfer {
 
     event Swap(address indexed tokenIn, address tokenOut, uint256 amountIn, uint256 amountOut);
+    event UpdatePool(address indexed user_, uint256 rewardPerTokenStored_, uint256 totalInvest_);
     event Staked(address indexed user_, uint256 actualStakedAmount_, uint256 totalStakedNew);
     event Claimed(address indexed user_, uint256 actualClaimedAmount_, uint256 totalClaimedNew);
     event ExitFunds(address indexed user_, uint256 actualExitAmount_, uint256 totalStakedNew);
+    event WithdrawToken(address indexed token_, address indexed to_, uint256 amount_);
     event SetSmartChefArray(address[] smartChefArray_, uint256[] weightsArray_);
     event SetPath(address indexed token_, address[] swapPath_);
     event SetSwapRouter(address swapRouter_);
@@ -109,6 +111,7 @@ contract SoaringFund is ISoaringFund, ReentrancyGuardUpgradeable, RoleControl, T
         require(totalFunds > 0, "No funds");
         _updateUserRewardPerToken(address(0));
         totalInvest = totalFunds;
+        emit UpdatePool(msg.sender, rewardPerTokenStored, totalInvest);
     }
 
     /// @inheritdoc ISoaringFund
@@ -134,9 +137,10 @@ contract SoaringFund is ISoaringFund, ReentrancyGuardUpgradeable, RoleControl, T
                 (bool res,) = to.call{value : amount}("");
                 require(res, "Transfer failed.");
             } else {
-                IERC20(token).transfer(to, amount);
+                doTransferOut(token, to, amount);
             }
         }
+        emit WithdrawToken(token, to, amount);
     }
 
     /// @inheritdoc ISoaringFund
