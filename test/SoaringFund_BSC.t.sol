@@ -65,6 +65,22 @@ contract SoaringFund_BSCTest is Test {
         vm.stopPrank();
     }
 
+    function test_addFunds() public {
+        vm.startPrank(CAKE_HOLDER);
+        uint testStakeNum = 100e18;
+        IERC20(CAKE).approve(address(soaringFund), testStakeNum);
+
+        vm.warp(block.timestamp + 10000);
+        vm.roll(block.number + 1000);
+        soaringFund.addFunds(testStakeNum);
+
+        vm.warp(block.timestamp + 20000);
+        vm.roll(block.number + 2000);
+
+        soaringFund.updatePool();
+        vm.stopPrank();
+    }
+
     function test_claim() public {
         vm.startPrank(CAKE_HOLDER);
         uint testStakeNum = 100e18;

@@ -17,6 +17,7 @@ contract SoaringFund is ISoaringFund, ReentrancyGuardUpgradeable, RoleControl, T
     event Staked(address indexed user_, uint256 actualStakedAmount_, uint256 totalStakedNew);
     event Claimed(address indexed user_, uint256 actualClaimedAmount_, uint256 totalClaimedNew);
     event ExitFunds(address indexed user_, uint256 actualExitAmount_, uint256 totalStakedNew);
+    event AddFunds(address indexed user, uint256 actualAddAmount_, uint256 totalInvest_);
     event WithdrawToken(address indexed token_, address indexed to_, uint256 amount_);
     event SetSmartChefArray(address[] smartChefArray_, uint256[] weightsArray_);
     event SetPath(address indexed token_, address[] swapPath_);
@@ -128,6 +129,15 @@ contract SoaringFund is ISoaringFund, ReentrancyGuardUpgradeable, RoleControl, T
                 _swap(rewardToken, remainBalance);
             }
         }
+    }
+
+    function addFunds(uint256 amount_) external renewPool nonReentrant {
+        require(cakeToken.balanceOf(address(msg.sender)) >= amount_, "balance not enough");
+        _updateUserRewardPerToken(address(0));
+
+        uint256 actualAddAmount = doTransferIn(address(cakeToken), msg.sender, amount_);
+        totalInvest = totalFunds + actualAddAmount;
+        emit AddFunds(msg.sender, actualAddAmount, totalInvest);
     }
 
     /// @inheritdoc ISoaringFund
