@@ -37,6 +37,11 @@ contract SoaringFund_BSCTest is Test {
 
     function test_stake() public {
         vm.startPrank(CAKE_HOLDER);
+
+        bytes32[] memory testB = new bytes32[](2);
+        testB[0] = 0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef;
+        testB[1] = 0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef;
+
         uint testStakeNum = 100e18;
         IERC20(CAKE).approve(address(soaringFund), testStakeNum);
         soaringFund.stake(testStakeNum);
